@@ -6,16 +6,17 @@
    [
     cpcg, 
     cpcg_worker, 
-    cpcg_pool_sup,
-    cpcg_event_feed
+    cpcg_worker_sup,
+    cpcg_event_feed,
+    cpcg_batch_server
    ]
   },
   
   {applications, [stdlib, kernel]},
   
-  {registered, [cpcg, cpcg_event_feed, cpcg_worker]},
+  {registered, [cpcg, cpcg_event_feed, cpcg_worker, cpcg_worker_sup]},
   
-  {mod, {cpcg_worker, []}}
+  {mod, {cpcg_batch_server, []}}
 
   %% {env, [
   %%   {answers, {<<"Yes">>, <<"No">>, <<"Doubtful">>,

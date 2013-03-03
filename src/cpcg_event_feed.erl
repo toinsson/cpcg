@@ -2,12 +2,12 @@
 %-version('1.1')
 -behaviour(gen_server).
 
--include("../include/backend.hrl").
+% include the API
 
 %%% EXPORTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Interface
 -export([
-         start/2,
+         start/0,
          stop/0,
          reload/1
         ]).
@@ -44,7 +44,7 @@
        ).
 
 %%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start(normal, _Args) ->
+start() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, no_args, []).
 
 stop() -> gen_server:call(?MODULE, terminate).
@@ -66,7 +66,7 @@ handle_cast({send_event}, State) ->
 
     % loop and feed the events via API
     io:format("send event to application ~p~n", [Event]),
-    cpcg_worker:post_event(Event),
+    cpcg_batch_server:post_event(Event),
 
     {noreply, State};
 

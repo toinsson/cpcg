@@ -5,8 +5,8 @@
 %%% EXPORTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Interface
 -export([
-         start/2,
-         post_event/1
+         start/1,
+         post_event/2
         ]).
 
 % Gen Server part
@@ -20,64 +20,55 @@
         ]).
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--define(PROCESSING_TIME, 1000).
+-define(PROCESSING_TIME, 50).
+-define(BATCH_LENGTH_LIMIT, 5000).
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--record(state, 
+-record(state,
         {
-          queue = [],
+          ets_batch = [],%ets:new(?MODULE, []),
           queue_length = 0
         }
-        ).
+       ).
 
 
 %%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start(normal, _Args) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, no_args, []).
+start(Name) ->
+    gen_server:start_link({local, Name}, ?MODULE, no_args, []).
 
-stop() -> gen_server:call(?MODULE, stop).
+stop(Name) -> gen_server:call(Name, stop).
 
-post_event(Event) ->
-    io:format("worker, post_event~n"),    
-    io:format("~s~n", [?MODULE]),    
+post_event(Name, Event) ->
+    io:format("worker, post_event~n"),
+    io:format("~s~n", [Name]),
 
-    gen_server:cast(?MODULE, {new_event, Event}).
-    
+    gen_server:call(Name, {new_event, Event}).
+
 
 %%% GEN_SERVER CALLBACKS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init(no_args) ->
     State = #state{},
+
     {ok, State}.
 
-handle_call(Call, _, State) ->
-    {stop, {"Can not handle cast", Call}, State}.
+handle_call({new_event, Event}, From, State) ->
+    {reply, "Done writing", State}.
 
 handle_cast({new_event, Event}, S) ->
     % get new_event and put on processing queue
-    NewS = S#state{queue = lists:append(S#state.queue, [Event]),
+    %ets:insert(S#state.ets_batch, {Event}),
+    L = lists:append(S#state.ets_batch, [Event]),
+    NewS = S#state{ets_batch = L,
                    queue_length = S#state.queue_length + 1},
-    
-    % trigger event processing
-    io:format("worker, got event~n"),    
-    %io:format("~p~n", [NewS]),
-    
-    %gen_server:cast(?MODULE, {process}),
+
+    % case queue_length == BATCH_LENGTH_LIMIT
+    % send worker full
+    % trigger batch
+
     {noreply, NewS};
 
 handle_cast({process}, S) ->
-    % if queue not empty, process
-    NewS = case S#state.queue == [] of
-               true ->
-                   [H|T] = S#state.queue,
-                   process_event(H),
-                   gen_server:cast(?MODULE, {process}),
-                   S#state{queue = T, 
-                           queue_length = S#state.queue_length - 1};
-               false ->
-                   S
-            end,
-    % else
-    {noreply, NewS}.
+    {noreply, S}.
 
 handle_info(timeout, State) ->
     % come back from timeout, send_event

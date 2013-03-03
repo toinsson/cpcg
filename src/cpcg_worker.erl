@@ -21,28 +21,31 @@
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -define(PROCESSING_TIME, 50).
--define(BATCH_LENGTH_LIMIT, 5000).
+-define(BATCH_LENGTH_LIMIT, 2).
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -record(state,
         {
-          ets_batch = [],%ets:new(?MODULE, []),
-          queue_length = 0
+          batch = [],%ets:new(?MODULE, []),
+          batch_length = 0
         }
        ).
 
 
 %%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start(Name) ->
-    gen_server:start_link({local, Name}, ?MODULE, no_args, []).
+start(Instance) ->
+    Name = atom_to_list(?MODULE) ++ "_" ++ integer_to_list(Instance),
+    gen_server:start_link({local, list_to_atom(Name)}, ?MODULE, no_args, []).
 
-stop(Name) -> gen_server:call(Name, stop).
+%stop(Name) -> gen_server:call(Name, stop).
 
 post_event(Name, Event) ->
-    io:format("worker, post_event~n"),
-    io:format("~s~n", [Name]),
+    %% io:format("worker ~p, post_event~n", [Name]),
 
     gen_server:call(Name, {new_event, Event}).
+
+%% process() ->
+%%     gen_server:cast(Name, {process}).
 
 
 %%% GEN_SERVER CALLBACKS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -51,30 +54,34 @@ init(no_args) ->
 
     {ok, State}.
 
-handle_call({new_event, Event}, From, State) ->
-    {reply, "Done writing", State}.
+handle_call({new_event, Event}, _From, #state{batch = L,
+                                              batch_length = QL})
+  when QL < ?BATCH_LENGTH_LIMIT-1 ->
+    % put event in the batch
+    NewS = #state{batch_length = QL + 1,
+                  batch = lists:append(L, [Event])},
+    {reply, event_batched, NewS};
 
-handle_cast({new_event, Event}, S) ->
-    % get new_event and put on processing queue
-    %ets:insert(S#state.ets_batch, {Event}),
-    L = lists:append(S#state.ets_batch, [Event]),
-    NewS = S#state{ets_batch = L,
-                   queue_length = S#state.queue_length + 1},
+handle_call({new_event, Event}, _From, #state{batch = L,
+                                              batch_length = QL})
+  when QL == ?BATCH_LENGTH_LIMIT-1 ->
+    % put event in the batch
+    NewS = #state{batch_length = QL + 1,
+                  batch = lists:append(L, [Event])},
 
-    % case queue_length == BATCH_LENGTH_LIMIT
-    % send worker full
-    % trigger batch
+    self() ! {begin_process},
+    % send a process request
+    {reply, batch_full, NewS}.
 
-    {noreply, NewS};
-
-handle_cast({process}, S) ->
+handle_cast(_, S) ->
     {noreply, S}.
 
-handle_info(timeout, State) ->
-    % come back from timeout, send_event
-    gen_server:cast(?MODULE, {send_event}),
+handle_info({begin_process}, S) ->
 
-    {noreply, State}.
+    process_event(S),
+
+    NewS = #state{},
+    {noreply, NewS}.
 
 code_change(_, State, _) ->
     {ok, State}.
@@ -82,10 +89,10 @@ terminate(_, _) ->
     ok.
 
 %%% INTERNAL FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-process_event(Event) ->
-    % print Event
-    io:format("~p~n", [Event]),
-
-    % timer sleep 20 ms
-    % will limit the msg process at ~ 50/sec
-    timer:sleep(20).
+process_event(#state{batch = B}) ->
+    % timer sleep 2 ms
+    % will limit the msg process at < 500/sec
+    lists:map(fun(_) ->
+                      timer:sleep(2)
+              end,
+              B).

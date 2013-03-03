@@ -24,7 +24,7 @@
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--define(FEED_TIMEOUT, 1000).
+-define(FEED_TIMEOUT, 1).
 
 % EVENT_HIST
 % it is an histogram of the power function
@@ -61,18 +61,18 @@ handle_call(terminate, _, State) ->
     {stop, normal, State}.
 
 handle_cast({send_event}, State) ->
-    % get a random item in the event distribution sample
+    %% get a random item in the event distribution sample
     Event = lists:nth(random:uniform(length(?EVENT_HIST)), ?EVENT_HIST),
 
-    % loop and feed the events via API
-    io:format("send event to application ~p~n", [Event]),
+    %$ loop and feed the events via API
+    %% io:format("send event to application ~p~n", [Event]),
     cpcg_batch_server:post_event(Event),
 
     {noreply, State};
 
 handle_cast({reload, X}, S) ->
 
-    io:format("turn : ~p~n", [S#state.turn]),
+    %% io:format("turn : ~p~n", [S#state.turn]),
 
     NewS = case S#state.turn of
                -1 ->
@@ -84,10 +84,10 @@ handle_cast({reload, X}, S) ->
 
 
 handle_info(timeout, State) ->
-    % come back from timeout, send_event
+    %% come back from timeout, send_event
     gen_server:cast(?MODULE, {send_event}),
 
-    io:format("State: ~p~n", [State#state.turn]),
+    %% io:format("State: ~p~n", [State#state.turn]),
 
     case State#state.turn == 0 of
         true -> {ok, cancel} = timer:cancel(State#state.timer_ref);

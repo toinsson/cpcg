@@ -79,11 +79,9 @@ handle_cast({new_event, Event}, S = #state{cur_worker = Pid}) ->
 
                batch_full -> %% change worker
                    [NewWorker|Tail] = S#state.worker_list,
-                   #state{cur_worker = NewWorker, worker_list = Tail ++ [Pid]};
-
+                   #state{cur_worker = NewWorker, worker_list = Tail ++ [Pid]}
            end,
 
-    %% io:format("Reply : ~s~n", [Reply]),
     {noreply, NewS}.
 
 handle_info(timeout, State) ->

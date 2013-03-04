@@ -1,5 +1,4 @@
 -module(cpcg_event_feed).
-%-version('1.1')
 -behaviour(gen_server).
 
 % include the API
@@ -24,16 +23,16 @@
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--define(FEED_TIMEOUT, 1).
+-define(FEED_TIMEOUT, 1000).
 
 % EVENT_HIST
 % it is an histogram of the power function
 -define(EVENT_HIST,
         [
-         {1, "A"},
-         {2, "B"},
-         {3, "C"},
-         {4, "D"}
+         {"A", 17000},
+         {"B", 1000},
+         {"C", 1000},
+         {"D", 1000}
         ]).
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -62,16 +61,19 @@ handle_call(terminate, _, State) ->
 
 handle_cast({send_event}, State) ->
     %% get a random item in the event distribution sample
-    Event = lists:nth(random:uniform(length(?EVENT_HIST)), ?EVENT_HIST),
+    {Event, Iter}  = lists:nth(random:uniform(length(?EVENT_HIST)),
+                               ?EVENT_HIST),
 
     %$ loop and feed the events via API
-    %% io:format("send event to application ~p~n", [Event]),
-    cpcg_batch_server:post_event(Event),
+    io:format("send ~p event to application ~n", [Iter]),
+    lists:map(fun(_) ->
+                      cpcg_batch_server:post_event({Event})
+              end,
+              lists:seq(1, Iter)),
 
     {noreply, State};
 
 handle_cast({reload, X}, S) ->
-
     %% io:format("turn : ~p~n", [S#state.turn]),
 
     NewS = case S#state.turn of

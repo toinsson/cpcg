@@ -6,7 +6,8 @@
 % Interface
 -export([
          start/1,
-         post_event/2
+         post_event/2,
+         stop/1
         ]).
 
 % Gen Server part
@@ -21,7 +22,7 @@
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -define(PROCESSING_TIME, 50).
--define(BATCH_LENGTH_LIMIT, 2).
+-define(BATCH_LENGTH_LIMIT, 500).
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -record(state,
@@ -37,7 +38,7 @@ start(Instance) ->
     Name = atom_to_list(?MODULE) ++ "_" ++ integer_to_list(Instance),
     gen_server:start_link({local, list_to_atom(Name)}, ?MODULE, no_args, []).
 
-%stop(Name) -> gen_server:call(Name, stop).
+stop(Name) -> gen_server:call(Name, stop).
 
 post_event(Name, Event) ->
     %% io:format("worker ~p, post_event~n", [Name]),
@@ -71,13 +72,20 @@ handle_call({new_event, Event}, _From, #state{batch = L,
 
     self() ! {begin_process},
     % send a process request
-    {reply, batch_full, NewS}.
+    {reply, batch_full, NewS};
+
+%% this can not happen, process_event is locking
+handle_call({new_event, _Event}, _From, S = #state{batch_length = QL})
+  when QL > ?BATCH_LENGTH_LIMIT-1 ->
+    {reply, overload, S};
+
+handle_call({stop}, _From, State) ->
+    {stop, normal, State}.
 
 handle_cast(_, S) ->
     {noreply, S}.
 
 handle_info({begin_process}, S) ->
-
     process_event(S),
 
     NewS = #state{},
@@ -89,9 +97,12 @@ terminate(_, _) ->
     ok.
 
 %%% INTERNAL FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-process_event(#state{batch = B}) ->
+process_event(#state{batch = B, batch_length = BL}) ->
     % timer sleep 2 ms
     % will limit the msg process at < 500/sec
+    io:format("worker ~p - process ~p events~n",
+              [self(), BL]),
+
     lists:map(fun(_) ->
                       timer:sleep(2)
               end,

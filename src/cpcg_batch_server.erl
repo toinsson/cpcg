@@ -1,5 +1,4 @@
 -module(cpcg_batch_server).
-%-version('1.1')
 -behaviour(gen_server).
 
 % include the API
@@ -23,20 +22,10 @@
         ]).
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--define(SPEC(MFA),
-        {
-          worker_sup,
-          {cpcg_worker_sup, start_link, [MFA]},
-          temporary,
-          10000,
-          supervisor,
-          [ppool_worker_sup]
-        }).
-
 -define(NUMBER_OF_WORKER, 10).
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--record(state, 
+-record(state,
         {
           cur_worker = [],
           worker_list = []
@@ -58,43 +47,42 @@ init(no_args) ->
     cpcg_worker_sup:start_link(),
 
     %% instantiate the children
-    WorkerPidList = 
+    WorkerPidList =
         lists:map(
-          fun(X) -> 
-                  {ok, Pid} = supervisor:start_child(cpcg_worker_sup, 
+          fun(X) ->
+                  {ok, Pid} = supervisor:start_child(cpcg_worker_sup,
                                                      [X]),
                   Pid
           end,
           lists:seq(1, ?NUMBER_OF_WORKER)
-          %[robin, batman, joker]
          ),
 
     [H|T] = WorkerPidList,
 
-    S = #state{cur_worker = H, 
+    S = #state{cur_worker = H,
                worker_list = T},
 
     {ok, S}.
 
 handle_call(stop, _, State) ->
     %% stop the supervisor
-    %%cpcg_worker_sup:stop(),
-    
+    cpcg_worker_sup:stop(),
     {stop, normal, State}.
 
-handle_cast({new_event, Event}, S = #state{cur_worker = Pid}) ->    
+handle_cast({new_event, Event}, S = #state{cur_worker = Pid}) ->
     %% get the current worker
     Pid = S#state.cur_worker,
     Reply = cpcg_worker:post_event(Pid, Event),
-    
-    NewS = case Reply of 
+
+    NewS = case Reply of
                event_batched -> S;
 
-               batch_full -> %% change worker            
+               batch_full -> %% change worker
                    [NewWorker|Tail] = S#state.worker_list,
-                   #state{cur_worker = NewWorker, worker_list = Tail ++ [Pid]}
+                   #state{cur_worker = NewWorker, worker_list = Tail ++ [Pid]};
+
            end,
-    
+
     %% io:format("Reply : ~s~n", [Reply]),
     {noreply, NewS}.
 

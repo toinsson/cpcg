@@ -6,29 +6,34 @@
 
 % supervisor part
 -export([
-         start_link/0, 
+         start_link/0,
+         stop/0,
          init/1
         ]).
 
-%%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start_link() ->
-    
-    io:format("~s~n", [?MODULE]),
-    
     supervisor:start_link({local, ?MODULE}, ?MODULE, no_args).
- 
+
+stop() ->
+    case whereis(cpcg_worker_sup) of
+        P when is_pid(P) ->
+            exit(P, kill);
+        _ -> ok
+    end.
+
 init(no_args) ->
     MaxRestart = 5,
     MaxTime = 3600,
-    {ok, 
+    {ok,
      {
        {simple_one_for_one, MaxRestart, MaxTime},
        [
         {cpcg_worker,
          {cpcg_worker, start, []},
-         temporary, 
-         5000, 
-         worker, 
+         temporary,
+         5000,
+         worker,
          [cpcg_worker]
         }
        ]

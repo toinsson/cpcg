@@ -1,7 +1,7 @@
 -module(cpcg_batch_server).
 -behaviour(gen_server).
 
-%% include the API
+-include("cpcg_def.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 %%% EXPORTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -24,7 +24,7 @@
         ]).
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--define(DEFAULT_NUMBER_OF_WORKERS, 12).
+
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -record(state,
@@ -34,30 +34,39 @@
         }).
 
 %%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% @doc start the batch server
 start() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, no_args, []).
+%% @doc start the batch server with configuration
 start(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
+%% @doc start the batch server for application
 start(normal, _Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, no_args, []).
 
+%% @doc stop the batch server
 stop() -> gen_server:call(?MODULE, stop).
 
+
+%% @doc post an event
+-spec post_event(Event :: cpcg_event()) -> ok.
 post_event(Event) ->
-    %% io:format("batch server, post_event~n"),
     gen_server:cast(?MODULE, {new_event, Event}).
 
 %%% GEN_SERVER CALLBACKS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% @private
 init(no_args) ->
     init_common(?DEFAULT_NUMBER_OF_WORKERS);
 init(NumberOfWorkers) when is_integer(NumberOfWorkers) ->
     init_common(NumberOfWorkers).
 
+%% @private
 handle_call(stop, _, State) ->
     %% stop the supervisor
     cpcg_worker_sup:stop(),
     {stop, normal, ok, State}.
 
+%% @private
 handle_cast({new_event, Event}, S = #state{cur_worker = Pid}) ->
     %% get the current worker
     Pid = S#state.cur_worker,
@@ -73,10 +82,13 @@ handle_cast({new_event, Event}, S = #state{cur_worker = Pid}) ->
 
     {noreply, NewS}.
 
+%% @private
 handle_info(timeout, State) ->
     {noreply, State}.
+%% @private
 code_change(_, State, _) ->
     {ok, State}.
+%% @private
 terminate(_, _) ->
     ok.
 

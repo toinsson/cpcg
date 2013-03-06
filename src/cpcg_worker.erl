@@ -4,6 +4,8 @@
 -module(cpcg_worker).
 -behaviour(gen_server).
 
+-include("cpcg_def.hrl").
+
 %%% EXPORTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Interface
 -export([
@@ -23,74 +25,77 @@
         ]).
 
 %%% DEFINES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--define(PROCESSING_TIME, 50).
--define(BATCH_LENGTH_LIMIT, 500).
-
--type event() :: record().
 
 %%% RECORDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 -record(state,
         {
           batch = [],
-          batch_length = 0
+          batch_length = 0,
+          callback = undef
         }
        ).
 
 
 %%% EXPORTED FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--spec start(Instance :: integer()) -> ok.
 %% @doc start the worker process
-%% @todo Finish writing the documentation.
+-spec start(Instance :: integer() | worker_cfg()) -> ok.
+start(Cfg = #worker_cfg{id = Id}) ->
+    Name = atom_to_list(?MODULE) ++ "_" ++ integer_to_list(Id),
+    gen_server:start_link({local, list_to_atom(Name)}, ?MODULE, Cfg, []);
 start(Instance) ->
     Name = atom_to_list(?MODULE) ++ "_" ++ integer_to_list(Instance),
     gen_server:start_link({local, list_to_atom(Name)}, ?MODULE, no_args, []).
 
--spec stop(Name) -> ok when
-      Name :: pid() | atom().
 %% @doc stop the worker process
-stop(Name) -> gen_server:call(Name, stop).
+-spec stop(Name) -> ok when Name :: pid() | atom().
+stop(Name) -> gen_server:call(Name, {stop}).
 
+%% @doc post an event in the process queue. Will reply with batch_full in case
+%% the BATCH_LENGTH_LIMIT for the worker has been reached. 
 -spec post_event(Name, Event) -> event_batched|batch_full when 
       Name :: pid() | atom(),
-      Event :: event().
-%% @doc post an event in the process queue. 
+      Event :: string() | atom().
 post_event(Name, Event) ->
     gen_server:call(Name, {new_event, Event}).
 
 %%% GEN_SERVER CALLBACKS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 %% @private
+init(#worker_cfg{db_callback = Cb}) ->
+    State = #state{callback = Cb},
+    {ok, State};
 init(no_args) ->
-    State = #state{},
+    Cb = fun(X) -> process_batch(X) end,
+    State = #state{callback = Cb},
     {ok, State}.
 
 %% @private
-handle_call({new_event, Event}, _From, #state{batch = L,
-                                              batch_length = QL})
+handle_call({new_event, Event}, _From, S = #state{batch = L,
+                                                  batch_length = QL})
   when QL < ?BATCH_LENGTH_LIMIT-1 ->
     %% put event in the batch
-    NewS = #state{batch_length = QL + 1,
-                  batch = lists:append(L, [Event])},
+    NewS = S#state{batch_length = QL + 1,
+                   batch = lists:append(L, [Event])},
     {reply, event_batched, NewS};
 
-handle_call({new_event, Event}, _From, #state{batch = L,
-                                              batch_length = QL})
+handle_call({new_event, Event}, _From, S = #state{batch = L,
+                                                  batch_length = QL})
   when QL == ?BATCH_LENGTH_LIMIT-1 ->
     %% put last event in the batch
-    NewS = #state{batch_length = QL + 1,
-                  batch = lists:append(L, [Event])},
-
+    NewS = S#state{batch_length = QL + 1,
+                   batch = lists:append(L, [Event])},
     self() ! {begin_process},
-    %% send a process request
     {reply, batch_full, NewS};
 
-%% this can not happen, process_event is locking
+%% this can not happen, process_batch is locking
 %% handle_call({new_event, _Event}, _From, S = #state{batch_length = QL})
 %%   when QL > ?BATCH_LENGTH_LIMIT-1 ->
 %%     {reply, overload, S};
 
 handle_call({stop}, _From, State) ->
-    {stop, normal, State}.
+    {stop, normal, ok, State}.
 
 %% @private
 handle_cast(_, S) ->
@@ -98,8 +103,9 @@ handle_cast(_, S) ->
 
 %% @private
 handle_info({begin_process}, S) ->
-    process_event(S),
-    {noreply, #state{}}. %% default state
+    (S#state.callback)(S#state.batch),
+    NewS = S#state{batch = [], batch_length = 0}, %% erase batch
+    {noreply, NewS}. 
 
 %% @private
 code_change(_, State, _) ->
@@ -109,9 +115,13 @@ terminate(_, _) ->
     ok.
 
 %%% INTERNAL FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-process_event(#state{batch = B, batch_length = BL}) ->
+process_batch(B) ->
+    BL = length(B),
+
     %% timer sleep 2 ms
     %% will limit the msg process at < 500/sec
+    %% io:format("worker ~p - process ~p events~n",
+    %%           [self(), BL]),
     io:format("worker ~p - process ~p events~n",
               [self(), BL]),
 

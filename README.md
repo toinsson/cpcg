@@ -29,8 +29,11 @@ cpcg_event_feed:start().
 cpcg_event_feed:reload(X).
 
 TODO:
-- create the worker when needed.
+- add configuration file 
 - transform event_feed as an EUNIT test
+
+IMPROVMENTS:
+- create the worker when needed.
 - adapt EVENT_HIST to realistic distribution
 - use REBAR
 - remove the dead code

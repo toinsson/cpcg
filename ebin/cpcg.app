@@ -7,6 +7,7 @@
     cpcg_worker,
     cpcg_worker_sup,
     cpcg_event_feed,
+    cpcg_test,
     cpcg_batch_server
    ]
   },
